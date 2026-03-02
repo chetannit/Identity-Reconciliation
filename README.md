@@ -10,15 +10,17 @@ FluxKart.com needs to identify and track customers who use different email addre
 
 - **Backend**: Node.js with JavaScript
 - **Framework**: Express.js
-- **Database**: SQLite (via Prisma ORM)
+- **Database**: PostgreSQL
 - **ORM**: Prisma
 
 ## 📋 Prerequisites
 
-- Node.js (v16 or higher)
-- npm or yarn
+- Node.js (v18 or higher)
+- PostgreSQL database (for production)
 
-## 🚀 Installation
+## 🚀 Quick Start
+
+### Local Development
 
 1. **Install dependencies**:
 
@@ -26,65 +28,40 @@ FluxKart.com needs to identify and track customers who use different email addre
 npm install
 ```
 
-2. **Generate Prisma Client**:
+2. **Setup database**:
 
 ```bash
-npm run prisma:generate
+# Create .env file
+echo "DATABASE_URL=your_database_url" > .env
+
+# Run migrations
+npx prisma migrate deploy
 ```
 
-3. **Run database migrations**:
-
-```bash
-npm run prisma:migrate
-```
-
-## 🏃 Running the Application
-
-### Quick Start (Recommended for Windows)
-
-```bash
-start-server.bat
-```
-
-This automatically stops any existing server and starts a fresh instance.
-
-### Development Mode
-
-```bash
-npm run dev
-```
-
-### Production Mode
+3. **Start server**:
 
 ```bash
 npm start
 ```
 
-### Using Custom Port
+The server will start on `http://localhost:3000`
 
-```bash
-PORT=3001 npm start
+### Environment Variables
+
+Create a `.env` file:
+
+```
+DATABASE_URL=postgresql://user:password@localhost:5432/identity_db
+PORT=3000
 ```
 
-Or in PowerShell:
+## 📡 API Endpoints
 
-```powershell
-$env:PORT=3001; npm start
-```
+### GET /health
 
-The server will start on `http://localhost:3000` (or your custom port)
+Health check endpoint.
 
-### Managing the Server
-
-**Stop the server:**
-
-```bash
-stop-server.bat
-```
-
-Or press `Ctrl+C` in the terminal where the server is running.
-
-## 📡 API Endpoint
+**Response**: `{"status":"ok"}`
 
 ### POST /identify
 
@@ -104,213 +81,84 @@ Identifies and consolidates contact information.
 ```json
 {
   "contact": {
-    "primaryContatctId": number,
-    "emails": string[],
-    "phoneNumbers": string[],
-    "secondaryContactIds": number[]
-  }
-}
-```
-
-## 🧪 Testing Examples
-
-### Example 1: Creating a new contact
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:3000/identify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "lorraine@hillvalley.edu",
-    "phoneNumber": "123456"
-  }'
-```
-
-**Response**:
-
-```json
-{
-  "contact": {
     "primaryContatctId": 1,
-    "emails": ["lorraine@hillvalley.edu"],
+    "emails": ["email1@example.com"],
     "phoneNumbers": ["123456"],
     "secondaryContactIds": []
   }
 }
 ```
 
-### Example 2: Adding new information (creates secondary contact)
-
-**Request**:
+## 🧪 Testing Example
 
 ```bash
+# Create a contact
 curl -X POST http://localhost:3000/identify \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "mcfly@hillvalley.edu",
-    "phoneNumber": "123456"
-  }'
-```
+  -d '{"email":"test@example.com","phoneNumber":"123456"}'
 
-**Response**:
-
-```json
-{
-  "contact": {
-    "primaryContatctId": 1,
-    "emails": ["lorraine@hillvalley.edu", "mcfly@hillvalley.edu"],
-    "phoneNumbers": ["123456"],
-    "secondaryContactIds": [2]
-  }
-}
-```
-
-### Example 3: Linking two primary contacts
-
-**Setup**: First create two separate primary contacts
-
-```bash
-# Create first primary contact
+# Add secondary contact
 curl -X POST http://localhost:3000/identify \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "george@hillvalley.edu",
-    "phoneNumber": "919191"
-  }'
-
-# Create second primary contact
-curl -X POST http://localhost:3000/identify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "biffsucks@hillvalley.edu",
-    "phoneNumber": "717171"
-  }'
+  -d '{"email":"test2@example.com","phoneNumber":"123456"}'
 ```
-
-**Now link them**:
-
-```bash
-curl -X POST http://localhost:3000/identify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "george@hillvalley.edu",
-    "phoneNumber": "717171"
-  }'
-```
-
-**Response**:
-
-```json
-{
-  "contact": {
-    "primaryContatctId": 1,
-    "emails": ["george@hillvalley.edu", "biffsucks@hillvalley.edu"],
-    "phoneNumbers": ["919191", "717171"],
-    "secondaryContactIds": [2]
-  }
-}
-```
-
-### Example 4: Query with only email or phone
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:3000/identify \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "mcfly@hillvalley.edu"
-  }'
-```
-
-Returns the same consolidated contact information.
 
 ## 🗄️ Database Schema
 
-```prisma
-model Contact {
-  id              Int       @id @default(autoincrement())
-  phoneNumber     String?
-  email           String?
-  linkedId        Int?
-  linkPrecedence  String    // "primary" or "secondary"
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  deletedAt       DateTime?
-}
+```sql
+CREATE TABLE "Contact" (
+    "id" SERIAL PRIMARY KEY,
+    "phoneNumber" TEXT,
+    "email" TEXT,
+    "linkedId" INTEGER,
+    "linkPrecedence" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "deletedAt" TIMESTAMP(3)
+);
 ```
 
 ## 🔍 How It Works
 
-1. **New Contact**: When no matching contacts exist, creates a new primary contact
-2. **Partial Match**: When email OR phone matches existing contact(s), links to the primary contact
-3. **New Information**: Creates secondary contacts when new email/phone combinations are discovered
-4. **Primary Merge**: When two separate primary contacts are linked, the older one remains primary
+1. **New Contact**: Creates primary contact when no match exists
+2. **Partial Match**: Links to existing primary contact when email OR phone matches
+3. **New Information**: Creates secondary contacts for new combinations
+4. **Primary Merge**: Older primary contact takes precedence when merging
 
 ## 📦 Project Structure
 
 ```
 identity-reconciliation/
 ├── prisma/
-│   └── schema.prisma         # Database schema
+│   ├── schema.prisma              # Database schema
+│   └── migrations/                # Database migrations
 ├── src/
-│   ├── server.js            # Express server setup
-│   ├── routes.js            # API routes
-│   └── contactService.js    # Business logic
-├── start-server.bat         # Helper script to start server (Windows)
-├── stop-server.bat          # Helper script to stop server (Windows)
-├── start-server.sh          # Helper script for Linux/Mac
+│   ├── server.js                  # Express server
+│   ├── routes.js                  # API routes
+│   └── contactService.js          # Business logic
+├── .env.example                   # Environment variables template
 ├── package.json
 └── README.md
 ```
 
-## 🛠️ Useful Commands
+## 🚀 Deployment
 
-- `npm run dev` - Run in development mode
-- `npm start` - Start server
-- `npm run prisma:studio` - Open Prisma Studio (database GUI)
-- `npm run prisma:migrate` - Run database migrations
+### Render.com (Recommended)
 
-## 🧹 Database Management
+1. Create PostgreSQL database on Render
+2. Create Web Service connected to your GitHub repo
+3. Set environment variable: `DATABASE_URL`
+4. Deploy!
 
-To view and manage your database:
-
-```bash
-npm run prisma:studio
-```
-
-This opens a web interface at `http://localhost:5555` where you can view and edit database records.
+Build command: `npm install && npx prisma generate && npx prisma migrate deploy`
+Start command: `npm start`
 
 ## 📝 Notes
 
-- The service uses SQLite for simplicity. For production, consider PostgreSQL or MySQL
+- Database uses PostgreSQL for production
 - All timestamps are in UTC
-- The `deletedAt` field is for soft deletes (not currently implemented)
-- Contact IDs in responses maintain the order of creation (oldest first)
-
-## 🐛 Troubleshooting
-
-**Issue**: `Cannot find module '@prisma/client'`
-**Solution**: Run `npm run prisma:generate`
-
-**Issue**: Database not found
-**Solution**: Run `npm run prisma:migrate`
-
-**Issue**: Port 3000 already in use
-**Solutions**:
-
-1. Use the helper script: `start-server.bat` (automatically stops existing server)
-2. Stop the existing server: `stop-server.bat`
-3. Use a different port: `PORT=3001 npm start`
-4. Find and kill the process manually: `netstat -ano | findstr :3000`
-
-**Issue**: Server crashes on startup
-**Solution**: Check if all dependencies are installed with `npm install`
-
-**Issue**: "EADDRINUSE" error
-**Solution**: The improved error handler now shows helpful messages. Follow the on-screen suggestions.
+- Contact IDs ordered by creation time (oldest first)
 
 ---
 
-Built with ❤️ for Bitespeed Backend Task
+Built for Bitespeed Backend Task
